@@ -1,0 +1,15 @@
+# ==============================================================================
+# Olhar das Máquinas - Dependências Python do Motor de Visão Computacional
+# ==============================================================================
+# Para instalar automaticamente, execute o arquivo: instalar_dependencias.bat
+# Ou manualmente pelo terminal: pip install -r requirements.txt
+
+# 1. Bibliotecas Essenciais (Visão Computacional e Processamento Matricial)
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# 2. Detecção Neural Avançada YOLO (Opcional)
+# O script 'gemini-code-1788908867217.py' possui fallback anatômico automático:
+# se ultralytics não estiver instalado, utiliza o classificador OpenCV de alta velocidade.
+# Se desejar usar YOLOv8, descomente a linha abaixo (necessita de download do PyTorch):
+# ultralytics>=8.0.0

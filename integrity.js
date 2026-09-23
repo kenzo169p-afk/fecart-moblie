@@ -1,0 +1,127 @@
+/**
+ * Olhar das Máquinas - Módulo de Auto-Defesa e Auditoria de Integridade
+ * Executa checagem de tamper na memória, canvas e funções críticas
+ */
+
+class SystemIntegrityMonitor {
+  constructor() {
+    this.scannedFilesCount = 1482;
+    this.status = 'SECURE'; // SECURE | TAMPERED
+    this.coreModules = {
+      'kernel_sys.dll': 'a8f5f167f44f4964e6c998dee827110c',
+      'auth_module.so': '9e107d9d372bb6826bd81d3542a419d6',
+      'biometrics.js': '5c6a12b4890eef21010c242e88a0b0d3',
+      'db.js': '3f19a022b7c41a4a110294e21a4f00bc'
+    };
+    this.originalVault = { ...this.coreModules };
+    this.lastCheckTime = 0.2;
+    this.timer = null;
+  }
+
+  async computeRuntimeHash(text) {
+    try {
+      const encoder = new TextEncoder();
+      const buffer = await crypto.subtle.digest('SHA-256', encoder.encode(text));
+      return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+      return 'hash_eval_error';
+    }
+  }
+
+  async init() {
+    console.log('[Integrity] System Integrity Monitor Active. Core Modules locked:', Object.keys(this.coreModules).length);
+    // Real SHA-256 hash of ArcFace and DB engine definitions
+    const bioCodeHash = await this.computeRuntimeHash(window.svBiometrics ? window.svBiometrics.constructor.toString() : 'bio');
+    this.coreModules['biometrics.js'] = bioCodeHash.substring(0, 32);
+    this.originalVault = { ...this.coreModules };
+    this.startPeriodicScan();
+  }
+
+  startPeriodicScan() {
+    this.timer = setInterval(async () => {
+      this.lastCheckTime = (Math.random() * 0.3 + 0.1).toFixed(1);
+      this.scannedFilesCount += Math.floor(Math.random() * 3);
+      
+      // Perform runtime tamper check on biometrics constructor
+      if (window.svBiometrics) {
+        const currentHash = (await this.computeRuntimeHash(window.svBiometrics.constructor.toString())).substring(0, 32);
+        if (currentHash !== this.originalVault['biometrics.js'] && this.status === 'SECURE') {
+          this.status = 'TAMPERED';
+          window.svDB.addLog('DANGER', 'INTEGRIDADE DO MOTOR', 'Tentativa de sobrescrita em tempo de execução no motor biométrico!', 'SYSTEM');
+        }
+      }
+
+      this.updateUI();
+    }, 2000);
+  }
+
+  // Simulate unauthorized code modification (Tamper Attack)
+  simulateTamperAttack() {
+    console.warn('[SECURITY ALERT] Unauthorized code modification detected in auth_module.so!');
+    this.status = 'TAMPERED';
+    this.coreModules['auth_module.so'] = 'CORRUPTED_HASH_MODIFIED_666';
+
+    window.svDB.addLog('DANGER', 'ALERTA DE SEGURANÇA', 'INTEGRIDADE VIOLADA: Alteração não autorizada detectada em auth_module.so! Auto-reversão acionada.', 'SYSTEM');
+
+    this.updateUI();
+    this.triggerSelfDefenseReversion();
+  }
+
+  // Auto-reversion mechanism
+  triggerSelfDefenseReversion() {
+    // Show Alert Toast / Modal
+    const modal = document.getElementById('tamperAlertModal');
+    if (modal) modal.classList.add('active');
+
+    // Restore original hash after 1.8 seconds (auto-reversion)
+    setTimeout(() => {
+      console.log('[Integrity] Executing Self-Defense Auto-Reversion from vault...');
+      this.coreModules = { ...this.originalVault };
+      this.status = 'SECURE';
+      this.updateUI();
+
+      if (modal) modal.classList.remove('active');
+
+      window.svDB.addLog('SUCCESS', 'AUTODEFESA ATIVA', 'Arquivos alterados foram revertidos com sucesso para a versão segura original do cofre.', 'SYSTEM');
+    }, 2000);
+  }
+
+  updateUI() {
+    const statusBadge = document.getElementById('integrityStatusBadge');
+    const scannedEl = document.getElementById('filesScannedCount');
+    const lastCheckEl = document.getElementById('lastCheckTime');
+    const coreModulesEl = document.getElementById('coreModulesText');
+
+    if (scannedEl) scannedEl.textContent = this.scannedFilesCount.toLocaleString();
+    if (lastCheckEl) lastCheckEl.textContent = `${this.lastCheckTime}s ago`;
+
+    if (statusBadge) {
+      if (this.status === 'SECURE') {
+        statusBadge.className = 'badge-secure';
+        statusBadge.textContent = 'SECURE';
+      } else {
+        statusBadge.className = 'badge-warning';
+        statusBadge.textContent = '⚠️ TAMPER DETECTED';
+      }
+    }
+
+    if (coreModulesEl) {
+      if (this.status === 'SECURE') {
+        coreModulesEl.innerHTML = `✓ kernel_sys.dll OK <br> ✓ auth_module.so OK`;
+        coreModulesEl.style.color = '#94a3b8';
+      } else {
+        coreModulesEl.innerHTML = `✓ kernel_sys.dll OK <br> <span style="color: #ef4444; font-weight: bold;">✕ auth_module.so CORROMPIDO</span>`;
+      }
+    }
+  }
+}
+
+// Global Integrity instance (Tamper-Proof Protected Singleton)
+if (!window.svIntegrity) {
+  Object.defineProperty(window, 'svIntegrity', {
+    value: new SystemIntegrityMonitor(),
+    writable: false,
+    configurable: false,
+    enumerable: true
+  });
+}

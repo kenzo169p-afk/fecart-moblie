@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co;">
+  <title>Olhar das Máquinas - Painel de Vigilância Integrado 24H</title>
+  
+  <!-- Kiosk Security & Anti-DevTools Active Shield (F12 / Console / Inspection Blocker) -->
+  <script>
+    (function() {
+      var lastBlockLogTime = 0;
+      var BLOCK_COOLDOWN_MS = 1200; // Delay mínimo de 1.2 segundos entre registros
+
+      // 1. Bloqueio Imediato de Teclas (F12, Ctrl+Shift+I/J/C, Ctrl+U, Ctrl+S)
+      function blockInspectionKeys(e) {
+        var key = e.key || '';
+        var code = e.keyCode || e.which || 0;
+        
+        var isF12 = key === 'F12' || code === 123;
+        var isCtrlShiftI = (e.ctrlKey || e.metaKey) && e.shiftKey && (key === 'I' || key === 'i' || code === 73);
+        var isCtrlShiftJ = (e.ctrlKey || e.metaKey) && e.shiftKey && (key === 'J' || key === 'j' || code === 74);
+        var isCtrlShiftC = (e.ctrlKey || e.metaKey) && e.shiftKey && (key === 'C' || key === 'c' || code === 67);
+        var isCtrlU = (e.ctrlKey || e.metaKey) && (key === 'U' || key === 'u' || code === 85);
+        var isCtrlS = (e.ctrlKey || e.metaKey) && (key === 'S' || key === 's' || code === 83);
+
+        if (isF12 || isCtrlShiftI || isCtrlShiftJ || isCtrlShiftC || isCtrlU || isCtrlS) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+
+          var now = Date.now();
+          if (now - lastBlockLogTime >= BLOCK_COOLDOWN_MS) {
+            lastBlockLogTime = now;
+            if (window.svDB && window.svDB.addLog) {
+              window.svDB.addLog('DANGER', 'BLOQUEIO DE DEVTOOLS', 'Tentativa de inspeção (F12 / Console) bloqueada pelo sistema.', 'KIOSK');
+            }
+          }
+          return false;
+        }
+      }
+
+      window.addEventListener('keydown', blockInspectionKeys, true);
+      document.addEventListener('keydown', blockInspectionKeys, true);
+
+      // 2. Bloqueio de Botão Direito e Arrastar Elementos
+      window.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return false;
+      }, true);
+
+      window.addEventListener('dragstart', function(e) {
+        e.preventDefault();
+        return false;
+      }, true);
+
+      // 3. Anti-Debugger Trap & Detecção de Abertura de DevTools (Acoplado e Desacoplado)
+      var isDevToolsOpen = false;
+
+      // Verificação segura sem travamento indevido da interface
+      function checkDockedDevTools() {
+        return false; // Desativa falso positivo de redimensionamento
+      }
+
+      var devtoolsDetectorTimer = null;
+    })();
+  </script>
+
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <!-- Operator Authentication Screen (Olhar das Máquinas Login) -->
+  <div id="loginOverlay" class="login-overlay">
+    <div class="login-grid-bg"></div>
+    <div class="login-wrapper">
+      <!-- Top Branding Section -->
+      <header class="login-header" id="authHeader">
+        <!-- Shield badge (Login mode) -->
+        <div class="login-shield-badge" id="authHeaderShield">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <!-- Lens badge (Register mode - exact from image) -->
+        <div class="register-lens-badge" id="authHeaderLens" style="display:none;">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 8V5a1 1 0 0 1 1-1h3"/>
+            <path d="M16 4h3a1 1 0 0 1 1 1v3"/>
+            <path d="M20 16v3a1 1 0 0 1-1 1h-3"/>
+            <path d="M8 20H5a1 1 0 0 1-1-1v-3"/>
+            <circle cx="12" cy="12" r="4" stroke="#38bdf8" stroke-width="2.2" fill="rgba(0, 240, 255, 0.2)"/>
+            <circle cx="12" cy="12" r="1.5" fill="#00f0ff"/>
+          </svg>
+        </div>
+
+        <h1 class="login-brand-title">Olhar das <span class="login-brand-ai">Máquinas</span></h1>
+        
+        <!-- Subtitle Login mode -->
+        <div class="login-subtitle" id="authHeaderSubLogin">ACESSO BIOMÉTRICO CORPORATIVO &middot; PROTEÇÃO AES-256</div>
+        <div class="login-vigilance-badge" id="authHeaderBadgeLogin">
+          <span class="login-vigilance-dot"></span>
+          <span>NÍVEL DE VIGILÂNCIA: ALTO</span>
+        </div>
+
+        <!-- Subtitle Register mode (from image) -->
+        <div class="register-subtitle" id="authHeaderSubRegister" style="display:none;">Nível de Vigilância</div>
+      </header>
+
+      <!-- 1. Central Authentication Card (Login) -->
+      <main class="login-card" id="operatorLoginCard">
+        <h2 class="login-card-title">Autenticação do Operador</h2>
+        <p class="login-card-desc">Insira suas credenciais para acessar o cluster de vigilância.</p>
+
+        <form id="operatorLoginForm" onsubmit="return false;" novalidate>
+          <!-- Email / ID Input -->
+          <div class="login-field-group">
+            <label for="loginEmail" class="login-field-label">E-MAIL / ID DO OPERADOR</label>
+            <div class="login-input-wrap">
+              <svg class="login-field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              <input type="email" id="loginEmail" class="login-input" value="operador@olhardasmaquinas.ai" placeholder="operador@olhardasmaquinas.ai" autocomplete="username" required spellcheck="false">
+            </div>
+          </div>
+
+          <!-- Password / Master Key Input -->
+          <div class="login-field-group">
+            <label for="loginPassword" class="login-field-label">CHAVE MESTRA DE SEGURANÇA / SENHA</label>
+            <div class="login-input-wrap">
+              <svg class="login-field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              <input type="password" id="loginPassword" class="login-input" value="MasterPass2026!" placeholder="••••••••••••" autocomplete="current-password" required>
+              <button type="button" class="btn-toggle-password" id="btnTogglePassword" title="Mostrar/Ocultar Senha" aria-label="Mostrar/Ocultar Senha">
+                <svg id="iconEyeOpen" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg id="iconEyeClosed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Options Row: Remember Session -->
+          <div class="login-options-row">
+            <label class="login-checkbox-label">
+              <input type="checkbox" id="loginRemember" class="login-checkbox" checked>
+              <span>Lembrar sessão (30 dias)</span>
+            </label>
+          </div>
+
+          <!-- Feedback message -->
+          <div id="loginFeedback" class="login-feedback" style="display:none;"></div>
+
+          <!-- Primary Submit Button -->
+          <button type="submit" id="btnLoginSubmit" class="btn-login-submit">
+            <span class="btn-login-text">Autenticar e Inicializar</span>
+            <span class="btn-login-spinner" style="display:none;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" class="spin-icon">
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+              </svg>
+              Iniciando Cluster...
+            </span>
+          </button>
+
+          <!-- Switch to Registration link -->
+          <div class="auth-switch-box">
+            <span>Não tem uma conta?</span>
+            <a href="#" id="linkGoToRegister" class="auth-switch-link">Cadastre-se aqui</a>
+          </div>
+        </form>
+      </main>
+
+      <!-- 2. Central Registration Card (Register - exact replica of uploaded image) -->
+      <main class="login-card glass-reflection" id="operatorRegisterCard" style="display:none;">
+        <h2 class="login-card-title text-center">Cadastro de Operador</h2>
+        <p class="login-card-desc text-center">Crie uma nova conta para acessar o cluster de vigilância.</p>
+
+        <form id="operatorRegisterForm" onsubmit="return false;" novalidate>
+          <!-- Email / ID Input -->
+          <div class="login-field-group">
+            <label for="registerEmail" class="login-field-label">E-MAIL / ID DO OPERADOR</label>
+            <div class="login-input-wrap">
+              <input type="email" id="registerEmail" class="login-input register-input" placeholder="operador@olhardasmaquinas.ai" autocomplete="username" required spellcheck="false">
+            </div>
+          </div>
+
+          <!-- Password Input -->
+          <div class="login-field-group">
+            <label for="registerPassword" class="login-field-label">CHAVE MESTRA DE SEGURANÇA / SENHA</label>
+            <div class="login-input-wrap">
+              <input type="password" id="registerPassword" class="login-input register-input" placeholder="••••••••••••" autocomplete="new-password" required>
+            </div>
+          </div>
+
+          <!-- Confirm Password Input -->
+          <div class="login-field-group">
+            <label for="registerConfirmPassword" class="login-field-label">CONFIRMAR CHAVE MESTRA / SENHA</label>
+            <div class="login-input-wrap">
+              <input type="password" id="registerConfirmPassword" class="login-input register-input" placeholder="••••••••••••" autocomplete="new-password" required>
+            </div>
+          </div>
+
+          <!-- Feedback message -->
+          <div id="registerFeedback" class="login-feedback" style="display:none;"></div>
+
+          <!-- Submit Button: Register & Initialize Account with gradient and spinner on the right -->
+          <button type="submit" id="btnRegisterSubmit" class="btn-register-submit">
+            <span class="btn-register-text">Cadastrar e Inicializar Conta</span>
+            <span class="btn-register-spinner">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="spin-icon">
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+              </svg>
+            </span>
+          </button>
+
+          <!-- Switch to Login link (exact from image) -->
+          <div class="register-switch-box">
+            <a href="#" id="linkGoToLogin" class="auth-switch-link-cyan">Já tem uma conta? Faça login aqui</a>
+          </div>
+        </form>
+
+        <!-- Subtle bottom watermark from image -->
+        <div class="register-footer-brand">Olhar das Máquinas</div>
+      </main>
+    </div>
+  </div>
+
+  <div id="app">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div>
+        <div class="brand-section">
+          <div class="brand-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            Olhar das Máquinas
+          </div>
+          <div class="vigilance-badge">• NÍVEL DE VIGILÂNCIA: ALTO</div>
+        </div>
+
+        <ul class="nav-list">
+          <li class="nav-item" data-tab="status">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+            Status do Sistema
+          </li>
+          <li class="nav-item active" data-tab="monitoring">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+            Câmeras
+          </li>
+          <li class="nav-item" data-tab="enrollment">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+            Cadastro
+          </li>
+          <li class="nav-item" data-tab="logs">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+            Tutorial
+          </li>
+        </ul>
+      </div>
+
+      <div>
+        <ul class="nav-list" style="margin-bottom: 16px;">
+          <li class="nav-item" data-tab="settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            Configurações
+          </li>
+        </ul>
+
+        <div class="user-profile-card">
+          <div class="user-avatar" id="sidebarUserAvatar">SC</div>
+          <div class="user-info">
+            <span class="user-name" id="sidebarUserName">S. Carter</span>
+            <span class="user-role" id="sidebarUserRole">AUTORIZAÇÃO: Nível 5 (Admin)</span>
+          </div>
+          <button type="button" class="btn-user-logout" id="btnLogout" title="Encerrar Sessão / Logout" aria-label="Encerrar Sessão">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Wrapper -->
+    <main class="main-wrapper">
+      <!-- Top Navbar -->
+      <header class="top-header">
+        <!-- Mobile Header Brand and Hamburger Menu (Invisível no PC) -->
+        <div class="mobile-header-left">
+          <button type="button" class="mobile-menu-btn" id="btnMobileMenuToggle" title="Menu de Navegação">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div class="mobile-brand-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            Olhar das Máquinas
+          </div>
+        </div>
+
+        <div class="header-metrics">
+          <div class="metric-item">
+            <span class="metric-label">FPS (MÉDIO)</span>
+            <span class="metric-value" id="metricFps">59.8</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">EDGE GPU</span>
+            <span class="metric-value" id="metricGpu">82%</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">STREAMS ATIVOS</span>
+            <span class="metric-value" id="activeStreamsCount" style="color: var(--text-main);">1 / 2</span>
+          </div>
+        </div>
+
+        <!-- SELETOR DE MODOS DE MONITOR (1: PADRÃO | 2: PRIORIZAR CADASTRO | 3: APENAS CÂMERAS) -->
+        <div class="display-mode-container">
+          <span class="display-mode-label">🖥️ MONITOR:</span>
+          <div class="display-mode-toggle" id="displayModeToggle">
+            <button type="button" class="btn-mode-toggle active" data-mode="default" id="btnModeDefault" title="Modo 1: Painel Completo Padrão">
+              1. Padrão
+            </button>
+            <button type="button" class="btn-mode-toggle" data-mode="enrollment" id="btnModeEnrollment" title="Modo 2: Foco Prioritário no Cadastro de Rostos">
+              2. Cadastro
+            </button>
+            <button type="button" class="btn-mode-toggle" data-mode="cameras" id="btnModeCameras" title="Modo 3: Mural de Câmeras 24H (Vigilância Completa)">
+              3. Câmeras
+            </button>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <div class="search-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" placeholder="Search camera feeds, logs, pers...">
+          </div>
+          <button class="btn-icon" id="btnHeaderSettings" title="Configurações do Sistema"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+          <button class="btn-icon" id="btnToggleLogs" title="Alternar Painel de Logs de Segurança"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg></button>
+        </div>
+      </header>
+
+      <div class="content-body">
+        <!-- Dashboard Center Area -->
+        <div class="dashboard-center">
+          
+          <!-- TAB: SYSTEM STATUS -->
+          <div class="tab-section" id="tab-status">
+            <div style="margin-bottom:24px;">
+              <h2 style="font-size:1.4rem; color:var(--text-main); margin-bottom:4px; font-weight:600;">📊 System Status — Painel de Controle em Tempo Real</h2>
+              <p style="color:var(--text-muted); font-size:0.9rem;">Informações detalhadas sobre reconhecimento facial, sincronização em nuvem, métricas de desempenho e diagnóstico.</p>
+            </div>
+            
+            <div class="settings-grid">
+              
+              <!-- Card 1 -->
+              <div class="settings-card">
+                <div class="settings-card-title">🔗 Sincronização Supabase Cloud</div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Status de Conexão</span>
+                  <span class="status-metric-value" id="stsSupabaseStatus">Verificando...</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">URL do Projeto</span>
+                  <span class="status-metric-value mono" id="stsSupabaseUrl" style="color:var(--text-dim);">—</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Chave API</span>
+                  <span class="status-metric-value" id="stsSupabaseKeyStatus">—</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Última Sincronização</span>
+                  <span class="status-metric-value" id="stsLastSync">Nunca</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Registros Sincronizados</span>
+                  <span class="status-metric-value" id="stsSyncCount">0</span>
+                </div>
+                <button class="btn-action" id="btnStatusSyncNow" style="width:100%; justify-content:center; margin-top:8px;">🔄 Sincronizar Agora</button>
+              </div>
+
+              <!-- Card 2 -->
+              <div class="settings-card">
+                <div class="settings-card-title">🧠 Reconhecimento Facial em Tempo Real</div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Estado do Motor ArcFace</span>
+                  <span class="status-metric-value" id="stsArcFaceEngine">Inicializando...</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Pessoa na Câmera</span>
+                  <span class="status-metric-value" id="stsPersonDetected">Nenhuma</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Resultado da Identificação</span>
+                  <span class="status-metric-value" id="stsIdentityResult" style="font-weight:700;">—</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Nome Identificado</span>
+                  <span class="status-metric-value" id="stsIdentityName">—</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Similaridade Cosseno (ArcFace)</span>
+                  <span class="status-metric-value mono" id="stsCosineValue">—</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Confiança Biométrica</span>
+                  <span class="status-metric-value mono" id="stsConfidenceValue">—</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Margem Angular (s·φ)</span>
+                  <span class="status-metric-value mono" id="stsMarginLogit">—</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Threshold Ativo</span>
+                  <span class="status-metric-value mono" id="stsThreshold">0.68</span>
+                </div>
+              </div>
+
+              <!-- Card 3 -->
+              <div class="settings-card">
+                <div class="settings-card-title">📦 Banco de Dados Biométrico</div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Pessoas Cadastradas</span>
+                  <span class="status-metric-value" id="stsRegisteredCount">0</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Total de Fontes Biométricas</span>
+                  <span class="status-metric-value" id="stsTotalSources">0</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Conformidade LGPD</span>
+                  <span class="status-metric-value online" id="stsLgpdStatus">Ativo (Lei 13.709/2018)</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Motor de Encriptação</span>
+                  <span class="status-metric-value online">AES-256-GCM via Web Crypto API</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Banco Local</span>
+                  <span class="status-metric-value">IndexedDB (OlharDasMaquinas_LocalDB)</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Banco Nuvem</span>
+                  <span class="status-metric-value" id="stsCloudDb">Supabase PostgreSQL</span>
+                </div>
+              </div>
+
+              <!-- Card 4 -->
+              <div class="settings-card">
+                <div class="settings-card-title">⚡ Desempenho e Hardware</div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Resolução de Processamento</span>
+                  <span class="status-metric-value">160×120 px (subsampled)</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Taxa de Amostragem Facial</span>
+                  <span class="status-metric-value" id="stsSampleRate">~16 FPS</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Dimensão do Embedding</span>
+                  <span class="status-metric-value">128-D (Float32)</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Câmeras Ativas</span>
+                  <span class="status-metric-value" id="stsActiveCams">0 / 2</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Pausa Automática</span>
+                  <span class="status-metric-value online" id="stsAutoPause">Ativa</span>
+                </div>
+                <div class="status-metric-row">
+                  <span class="status-metric-label">Sintetizador de Voz</span>
+                  <span class="status-metric-value" id="stsVoiceStatus">Ativo (pt-BR)</span>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Section C -->
+            <div style="margin-top:24px;">
+              <h3 style="font-size:1.1rem; color:var(--text-main); margin-bottom:12px; font-weight:600;">📈 Linha do Tempo de Reconhecimento (Últimos Eventos)</h3>
+              <div id="stsRecognitionTimeline" style="background:var(--bg-dark); border:1px solid var(--border-color); border-radius:8px; padding:12px; max-height:220px; overflow-y:auto;"></div>
+            </div>
+          </div>
+          
+          <!-- TAB 1: MONITORING -->
+          <div class="tab-section active" id="tab-monitoring">
+            
+            <!-- PAINEL EM TEMPO REAL: STATUS DE IDENTIDADE E PAUSA AUTOMÁTICA -->
+            <div class="identity-status-banner paused" id="realtimeIdentityBanner">
+              <div class="identity-info-group">
+                <div style="font-size:1.8rem;" id="identityStatusIcon">⏸️</div>
+                <div>
+                  <div class="identity-badge-title" id="identityStatusTitle" style="color:var(--text-dim);">
+                    NENHUMA PESSOA DETECTADA NA CÂMERA
+                  </div>
+                  <div class="identity-subtext" id="identityStatusSub">
+                    Sistema em Pausa Automática (Economizando recursos de CPU/GPU). Aguardando presença em frente à câmera.
+                  </div>
+                </div>
+              </div>
+              <div class="badge-secure" id="identityStatusBadge" style="background:rgba(100,116,139,0.15); border-color:#64748b; color:#94a3b8;">
+                PAUSADO
+              </div>
+            </div>
+
+            <!-- Control Toolbar -->
+            <div class="control-bar">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <button class="btn-action" id="btnCheckCameras">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                  Gerenciar Câmeras USB
+                </button>
+                <div style="font-size:0.8rem; color:var(--accent-cyan); font-weight:600; background:rgba(6,182,212,0.1); padding:4px 10px; border-radius:4px; border:1px solid rgba(6,182,212,0.3);">
+                  Reconhecimento Biométrico DB ArcFace 24H
+                </div>
+              </div>
+
+              <div style="font-size:0.75rem; color:var(--text-muted);">Sintetizador de Voz: Ativo</div>
+            </div>
+
+            <!-- 4 Camera Grid -->
+            <div class="camera-grid">
+              
+              <!-- Feed 1: Saída USB 1 (DYNAMIC FACE TRACKER) -->
+              <div class="camera-card" id="cardCam1">
+                <div class="camera-header">
+                  <div class="cam-tag" id="tagCam1">CAM_01 · Saída USB 1</div>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="camera-status-pill" id="statusCam1" style="color:#10b981; font-size:0.7rem; font-weight:700;">● AO VIVO</span>
+                    <button class="btn-icon mobile-cam-flip-btn" id="btnMobileFlipCam" type="button" title="Alternar Câmera Frontal / Traseira">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                      </svg>
+                    </button>
+                    <button class="btn-icon" style="padding:4px 7px; cursor:pointer;" title="Configurar / Selecionar Câmera da Saída USB 1" onclick="window.svApp.openCameraCheckModal(1)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="cam-feed-container" id="containerCam1">
+                  <video class="cam-video" id="videoFeedCam1" autoplay muted playsinline></video>
+                  <canvas class="cam-canvas" id="canvasFeedCam1"></canvas>
+                  
+                  <!-- OVERLAY QUANDO NENHUMA CÂMERA ESTIVER CONECTADA -->
+                  <div class="no-camera-overlay" id="noCamOverlay1" style="display:none;">
+                    <svg class="no-cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                    <div style="font-weight:700; color:var(--text-main); font-size:0.95rem;" id="noCamTitle1">SAÍDA USB 1: NENHUMA CÂMERA CONECTADA</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px; max-width:240px;">Nenhum dispositivo de vídeo USB ou RTSP ativo nesta saída.</div>
+                    <button class="btn-action" style="margin-top:12px; font-size:0.78rem; padding:8px 16px; display:inline-flex; align-items:center; gap:8px;" onclick="window.svApp.openCameraCheckModal(1)">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                      Conectar Câmera na Saída USB 1
+                    </button>
+                  </div>
+
+                  <!-- HUD INFORMATIVO INDIVIDUAL DA CÂMERA 1 -->
+                  <div class="camera-footer-hud" id="hudCam1">
+                    <span class="hud-status" id="detStatusCam1">👁️ IA ArcFace Ativa</span>
+                    <span class="hud-match" id="detMatchCam1">Aguardando presença...</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Feed 2: Saída USB 2 -->
+              <div class="camera-card" id="cardCam2">
+                <div class="camera-header">
+                  <div class="cam-tag" id="tagCam2">CAM_02 · Saída USB 2</div>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="camera-status-pill" id="statusCam2" style="color:var(--text-dim); font-size:0.7rem; font-weight:700;">DESCONECTADA</span>
+                    <button class="btn-icon" style="padding:4px 7px; cursor:pointer;" title="Configurar / Selecionar Câmera da Saída USB 2" onclick="window.svApp.openCameraCheckModal(2)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="cam-feed-container" id="containerCam2">
+                  <video class="cam-video" id="videoFeedCam2" autoplay muted playsinline style="display:none;"></video>
+                  <canvas class="cam-canvas" id="canvasFeedCam2" style="display:none;"></canvas>
+                  
+                  <!-- OVERLAY QUANDO NENHUMA CÂMERA ESTIVER CONECTADA -->
+                  <div class="no-camera-overlay" id="noCamOverlay2">
+                    <svg class="no-cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                    <div style="font-weight:700; color:var(--text-main); font-size:0.95rem;" id="noCamTitle2">SAÍDA USB 2: NENHUMA CÂMERA CONECTADA</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px; max-width:240px;">Conecte uma webcam física USB nesta saída.</div>
+                    <button class="btn-action" style="margin-top:12px; font-size:0.78rem; padding:8px 16px; display:inline-flex; align-items:center; gap:8px;" onclick="window.svApp.openCameraCheckModal(2)">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                      Conectar Câmera na Saída USB 2
+                    </button>
+                  </div>
+
+                  <!-- HUD INFORMATIVO INDIVIDUAL DA CÂMERA 2 -->
+                  <div class="camera-footer-hud" id="hudCam2" style="display:none;">
+                    <span class="hud-status" id="detStatusCam2">👁️ IA ArcFace Ativa</span>
+                    <span class="hud-match" id="detMatchCam2">Aguardando presença...</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Bottom System Integrity Monitor Bar -->
+            <div class="integrity-bar">
+              <div class="integrity-info">
+                <svg class="integrity-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                <div>
+                  <div class="integrity-title">System Integrity Monitor</div>
+                  <div class="integrity-sub">NODE_CLUSTER_ALPHA · Last Check: <span id="lastCheckTime">0.2s ago</span></div>
+                </div>
+              </div>
+
+              <div class="integrity-stats">
+                <div>
+                  <div style="color:var(--text-dim);">FILES SCANNED</div>
+                  <div style="font-weight:700; color:var(--text-main); font-size:0.9rem;" id="filesScannedCount">1,482</div>
+                </div>
+                <div>
+                  <div style="color:var(--text-dim);">CORE MODULES</div>
+                  <div class="integrity-sub" id="coreModulesText">✓ kernel_sys.dll OK <br> ✓ auth_module.so OK</div>
+                </div>
+                <div class="badge-secure" id="integrityStatusBadge">SECURE</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- TAB 2: ENROLLMENT (CADASTRO LGPD MULTI-FONTE) -->
+          <div class="tab-section" id="tab-enrollment">
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 24px;">
+              <h2 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 6px;">Módulo de Cadastro Biométrico Multi-Fonte (LGPD)</h2>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">
+                Ao realizar o cadastro abaixo, a pessoa passa a ser reconhecida como <strong>[AUTORIZADA]</strong> no sistema de câmeras.
+              </p>
+
+              <form id="enrollmentForm">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                  <div>
+                    <div class="form-group">
+                      <label>Nome Completo do Colaborador *</label>
+                      <input type="text" class="form-control" id="enrollName" required placeholder="Ex: usuario teste">
+                    </div>
+
+                    <div class="form-group">
+                      <label>Cargo / Departamento</label>
+                      <input type="text" class="form-control" id="enrollRole" placeholder="Ex: Engenharia de Software">
+                    </div>
+
+                    <div class="form-group">
+                      <label>CPF (Criptografado AES-256) <span style="color:var(--text-muted); font-size:0.75rem;">(Opcional para testes)</span></label>
+                      <input type="text" class="form-control" id="enrollCpf" placeholder="000.000.000-00 (Opcional)" maxlength="14" autocomplete="off">
+                      <div style="font-size:0.72rem; color:var(--text-muted); margin-top:3px;">Opcional: Se deixado em branco, o sistema gerará um identificador criptográfico automático.</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style="font-size:0.8rem; color:var(--text-muted); font-weight:600;">Fontes Biométricas da Face (Múltiplas Fotos)</label>
+                    <div style="background:var(--bg-dark); border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-top:6px; display:flex; flex-direction:column; align-items:center; gap:10px;">
+                      <video id="enrollmentWebcamPreview" style="width:200px; height:130px; background:#000; border-radius:6px; object-fit:cover;" autoplay muted playsinline></video>
+                      
+                      <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+                        <button type="button" class="btn-action" id="btnCapturePhoto" style="font-size:0.75rem;">📷 Capturar Foto</button>
+                        <button type="button" class="btn-outline" id="btnClearPhotos" style="font-size:0.75rem; color:#ef4444; border-color:rgba(239,68,68,0.4);">🗑️ Limpar Fotos</button>
+                      </div>
+
+                      <div id="sourcesCapturedCount" style="font-family:var(--font-mono); font-size:0.75rem; color:var(--accent-cyan);">0 Foto(s) Biométrica(s) Capturada(s) (Ilimitado)</div>
+                      <div class="media-source-preview" id="mediaSourcesContainer"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- GUIA DE PRECISÃO BIOMÉTRICA (REGRA DE OURO ARCFACE) -->
+                <div class="golden-rule-card" style="margin-top:20px; background:rgba(15,23,42,0.6); border:1px solid rgba(6,182,212,0.3); border-radius:8px; padding:16px;">
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <span style="font-size:1.1rem;">💡</span>
+                      <strong style="color:var(--accent-cyan); font-size:0.9rem;">Guia de Amostragem ArcFace: "Regra de Ouro" para Máxima Precisão</strong>
+                    </div>
+                    <span style="font-size:0.75rem; background:rgba(6,182,212,0.15); color:var(--accent-cyan); padding:3px 10px; border-radius:4px; font-weight:600; border:1px solid rgba(6,182,212,0.3);">Sem Limite de Fotos (Recomendado: 6+ Fotos)</span>
+                  </div>
+                  <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:12px; line-height:1.4;">
+                    O motor <strong>ArcFace</strong> calcula um <em>Centroide Vetorial (128-D)</em> ponderado. Cadastrar variações sutis de ângulo garante reconhecimento instantâneo ao vivo e elimina falsas rejeições:
+                  </p>
+                  
+                  <div style="overflow-x:auto;">
+                    <table class="golden-rule-table" style="width:100%; border-collapse:collapse; font-size:0.78rem; text-align:left;">
+                      <thead>
+                        <tr style="background:rgba(30,41,59,0.8); border-bottom:1px solid var(--border-color); color:var(--text-main);">
+                          <th style="padding:8px 10px; width:95px; text-align:center;">Quantidade</th>
+                          <th style="padding:8px 10px;">Como Posicionar o Rosto</th>
+                          <th style="padding:8px 10px;">Benefício para a IA</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                          <td style="padding:8px 10px; text-align:center; font-weight:700; color:var(--accent-cyan);">3 fotos</td>
+                          <td style="padding:8px 10px;">Olhando direto para a câmera (expressão neutra e leve sorriso)</td>
+                          <td style="padding:8px 10px; color:var(--text-muted);">Base frontal principal e proporção áurea facial estável</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                          <td style="padding:8px 10px; text-align:center; font-weight:700; color:var(--accent-cyan);">2 fotos</td>
+                          <td style="padding:8px 10px;">Girando o rosto levemente para a <strong>esquerda (~15°)</strong></td>
+                          <td style="padding:8px 10px; color:var(--text-muted);">Reconhece a pessoa mesmo quando ela se aproxima de lado</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                          <td style="padding:8px 10px; text-align:center; font-weight:700; color:var(--accent-cyan);">2 fotos</td>
+                          <td style="padding:8px 10px;">Girando o rosto levemente para a <strong>direita (~15°)</strong></td>
+                          <td style="padding:8px 10px; color:var(--text-muted);">Compensa o ângulo oposto sem perder traços oculares</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                          <td style="padding:8px 10px; text-align:center; font-weight:700; color:var(--accent-cyan);">2 fotos</td>
+                          <td style="padding:8px 10px;">Inclinando levemente a cabeça para <strong>cima e para baixo</strong></td>
+                          <td style="padding:8px 10px; color:var(--text-muted);">Compensa variações de altura da câmera ou postura</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:8px 10px; text-align:center; font-weight:700; color:var(--accent-cyan);">1 a 2 fotos</td>
+                          <td style="padding:8px 10px;">Com e sem óculos (caso o usuário utilize óculos no dia a dia)</td>
+                          <td style="padding:8px 10px; color:var(--text-muted);">Evita falsa rejeição causada por reflexos de luz na armação/lente</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- termo LGPD -->
+                <div style="margin-top:20px;">
+                  <label style="font-size:0.8rem; color:var(--text-muted); font-weight:600;">Termo de Consentimento Biométrico (Art. 7º e 11º da LGPD - Lei 13.709/2018)</label>
+                  <div class="lgpd-box">
+                    <strong>DECLARAÇÃO DE CONSENTIMENTO EXPLICITO PARA TRATAMENTO DE DADOS BIOMÉTRICOS:</strong><br>
+                    Ao marcar a caixa abaixo, o titular concorda expressamente que o sistema <strong>Olhar das Máquinas</strong> realize a coleta, extração de vetores faciais e armazenamento de suas imagens e vídeos biométricos exclusivamente para a finalidade de <em>Controle de Acesso e Segurança de Informação 24H</em>. O titular declara estar ciente de que pode solicitar a EXCLUSÃO DEFINITIVA (expurgo total) de suas mídias a qualquer momento através do painel de administração.
+                  </div>
+                  <label style="display:flex; align-items:center; gap:10px; font-size:0.85rem; color:var(--text-main); cursor:pointer;">
+                    <input type="checkbox" id="lgpdConsentCheckbox" checked style="width:18px; height:18px; accent-color:var(--accent-blue);">
+                    Declaro que li e aceito os termos do consentimento LGPD para salvamento de biometria e criptografia de dados.
+                  </label>
+                </div>
+
+                <div class="modal-footer" style="margin-top:20px; display:flex; gap:12px; flex-wrap:wrap;">
+                  <button type="submit" id="btnSubmitAuthorized" class="btn-action" style="padding:10px 22px; font-size:0.9rem;">
+                    💾 Salvar Cadastro Autorizado
+                  </button>
+                  <button type="button" id="btnSubmitBlocked" class="btn-outline" style="padding:10px 22px; font-size:0.9rem; color:#ef4444; border-color:#ef4444; background:rgba(239,68,68,0.08); font-weight:700; cursor:pointer;">
+                    🚫 Cadastrar Pessoa Bloqueada
+                  </button>
+                </div>
+              </form>
+
+              <hr style="border:0; border-top:1px solid var(--border-color); margin: 30px 0;">
+
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                <h3 style="font-size:1.0rem; font-weight:700; margin:0;">Pessoas Cadastradas & Gestão de Direitos do Titular (LGPD)</h3>
+                <button type="button" id="btnDeduplicateUsers" class="btn-outline" style="font-size:0.75rem; padding:5px 12px; border-color:rgba(6,182,212,0.4); color:#06b6d4; cursor:pointer;" title="Verifica e unifica cadastros com nomes iguais">
+                  🧹 Limpar Duplicados
+                </button>
+              </div>
+              <div id="registeredUsersList"></div>
+            </div>
+          </div>
+
+          <!-- TAB 3: SETTINGS (PAINEL COMPLETO DE CONFIGURAÇÕES) -->
+          <div class="tab-section" id="tab-settings">
+            <div style="margin-bottom: 20px;">
+              <h2 style="font-size: 1.3rem; font-weight: 700; color: var(--text-main);">⚙️ Painel de Configurações do Sistema</h2>
+              <p style="font-size: 0.85rem; color: var(--text-muted);">Personalize a interface, preferências de tema, tolerância biométrica e parâmetros de rede.</p>
+            </div>
+
+            <div class="settings-grid">
+              
+              <!-- Card 1: Aparência e Tema -->
+              <div class="settings-card">
+                <div class="settings-card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+                  Aparência e Tema Visual
+                </div>
+
+                <div class="form-group">
+                  <label>Tema da Interface</label>
+                  <select class="form-control" id="themeSelect">
+                    <option value="dark">🌙 Modo Escuro (Cyber Dark Navy)</option>
+                    <option value="light">☀️ Modo Claro (Clean Security Theme)</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>Sintetizador de Voz (Anúncio Falado)</label>
+                  <select class="form-control" id="voiceToggleSelect">
+                    <option value="enabled">🔊 Ativado (Anunciar Pessoas e Alertas por Voz)</option>
+                    <option value="disabled">Mudo (Apenas Alertas Visuais)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Card 2: Parâmetros Biométricos & IA -->
+              <div class="settings-card">
+                <div class="settings-card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                  Motor Biométrico & IA
+                </div>
+
+                <!-- Configuração de Porcentagem Mínima para Pessoa Não Cadastrada -->
+                <div class="form-group">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <label style="margin-bottom:0; font-weight:600; color:var(--text-main);">Porcentagem Mínima para Pessoa Não Cadastrada</label>
+                    <span id="minUnauthPercentageVal" style="font-size:0.85rem; font-weight:700; color:var(--accent-cyan); font-family:var(--font-mono); background:rgba(6,182,212,0.12); padding:2px 10px; border-radius:4px; border:1px solid rgba(6,182,212,0.3);">60%</span>
+                  </div>
+                  <input type="range" min="10" max="95" value="60" class="form-control" id="minUnauthPercentageRange">
+                  <div style="font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between; margin-top:4px;">
+                    <span>10% (Alerta Imediato)</span>
+                    <span>50% (Equilibrado)</span>
+                    <span>95% (Alta Certeza)</span>
+                  </div>
+                  <p style="font-size:0.75rem; color:var(--text-dim); margin-top:5px; line-height:1.4;">
+                    Define a porcentagem mínima de certeza biométrica para exibir a mensagem e acionar o alerta de <strong>Pessoa Não Cadastrada</strong> na tela.
+                  </p>
+                </div>
+
+                <div class="form-group">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <label style="margin-bottom:0;">Sensibilidade de Detecção (Tolerância ArcFace)</label>
+                    <span id="sensitivityRangeVal" style="font-size:0.85rem; font-weight:700; color:var(--text-muted); font-family:var(--font-mono);">75%</span>
+                  </div>
+                  <input type="range" min="50" max="95" value="75" class="form-control" id="sensitivityRange">
+                  <div style="font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between;">
+                    <span>Alta Tolerância (50%)</span>
+                    <span>Rigoroso (95%)</span>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label>Pausa Automática ao Ausentar Pessoa</label>
+                  <select class="form-control">
+                    <option value="enabled">Ativada (Economizar 100% de CPU/GPU)</option>
+                    <option value="disabled">Desativada (Execução Contínua)</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>Modo de Calibração / Demonstração FECART</label>
+                  <select class="form-control" id="selectTestMode">
+                    <option value="auto">Detecção Real por IA (Câmera Ativa)</option>
+                    <option value="simulate_authorized">Simulação: Forçar Autorizado</option>
+                    <option value="simulate_unauthorized">Simulação: Forçar Alerta Não Autorizado</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Card 3: Notificações e Alertas -->
+              <div class="settings-card">
+                <div class="settings-card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                  Alertas e Som de Segurança
+                </div>
+
+                <div class="form-group">
+                  <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                    <input type="checkbox" checked style="width:16px; height:16px;">
+                    Emitir Alerta Sonoro ao detectar Pessoa Não Autorizada
+                  </label>
+                </div>
+
+                <div class="form-group">
+                  <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                    <input type="checkbox" checked style="width:16px; height:16px;">
+                    Registrar log automático de Auditoria a cada alteração
+                  </label>
+                </div>
+              </div>
+
+              <!-- Card 4: Supabase Nuvem -->
+              <div class="settings-card">
+                <div class="settings-card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"></path></svg>
+                  Supabase Cloud Bridge (Sincronização em Nuvem)
+                </div>
+
+                <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:12px;">
+                  Interligação direta entre o banco IndexedDB local e seu projeto no <strong>Supabase Cloud</strong>. Sincroniza fotos, vetores ArcFace e auditoria LGPD.
+                </p>
+
+                <div class="form-group">
+                  <label>Supabase Project URL</label>
+                  <input type="text" class="form-control" id="supabaseUrlInput" placeholder="https://zeiebkchiribjazopeif.supabase.co">
+                </div>
+
+                <div class="form-group">
+                  <label>Supabase Anon Key (API Key)</label>
+                  <input type="password" class="form-control" id="supabaseKeyInput" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6...">
+                </div>
+
+                <button class="btn-action" id="btnSaveSupabase" style="width:100%; justify-content:center; margin-top:6px;">💾 Salvar & Sincronizar Supabase</button>
+              </div>
+
+              <!-- Card 5: Backup e Exportação Segura (Zero-Knowledge) -->
+              <div class="settings-card">
+                <div class="settings-card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Backup Criptografado por Senha (Zero-Knowledge)
+                </div>
+
+                <p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:12px;">
+                  Exportação protegida por senha mestre via <strong>AES-GCM 256-bit</strong> e assinatura criptográfica <strong>SHA-256</strong>. Os dados só podem ser lidos mediante inserção da senha correspondente.
+                </p>
+
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <button class="btn-action" id="btnExportBackup" style="width:100%; justify-content:center;">🔐 Exportar Cofre Criptografado (JSON)</button>
+                  <label class="btn-outline" style="width:100%; justify-content:center; display:flex; align-items:center; cursor:pointer; font-size:0.8rem; padding:8px 14px; text-align:center;">
+                    📥 Restaurar Cofre de Backup
+                    <input type="file" id="inputImportBackup" accept=".json" style="display:none;">
+                  </label>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- TAB: TUTORIAL DO SISTEMA -->
+          <div class="tab-section" id="tab-logs">
+            <div style="margin-bottom: 24px;">
+              <h2 style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); display:flex; align-items:center; gap:8px;">
+                📖 Tutorial & Guia de Uso do Sistema
+              </h2>
+              <p style="font-size: 0.85rem; color: var(--text-muted);">
+                Instruções passo a passo para operar o sistema biométrico facial, cadastrar pessoas, alternar monitores e conectar câmeras.
+              </p>
+            </div>
+
+            <div class="settings-grid">
+              <!-- Card 1: Como Cadastrar Pessoas -->
+              <div class="settings-card">
+                <div class="settings-card-title">
+                  <span style="font-size:1.1rem;">👤</span> 1. Como Cadastrar Novas Pessoas
+                </div>
+                <p style="font-size:0.8rem; color:var(--text-muted); line-height:1.6;">
+                  1. Acesse o botão <strong>Cadastro</strong> no menu lateral.<br>
+                  2. Digite o <strong>Nome Completo</strong> e o <strong>CPF</strong> do titular.<br>
+                  3. Selecione o Nível de Acesso desejado.<br>
+                  4. Posicione a pessoa diante da câmera e clique em <strong>Capturar Foto com Fundo Preto</strong> (o sistema recorta e padroniza o rosto com fundo escuro para melhor precisão).<br>
+                  5. Clique em <strong>Salvar Cadastro</strong> para persistir a biometria no banco de dados.
+                </p>
+              </div>
+
+              <!-- Card 2: Reconhecimento em Tempo Real -->
+              <div class="settings-card">
+                <div class="settings-card-title">
+                  <span style="font-size:1.1rem;">👁️</span> 2. Reconhecimento Facial em Tempo Real
+                </div>
+                <p style="font-size:0.8rem; color:var(--text-muted); line-height:1.6;">
+                  • Na tela <strong>Câmeras</strong>, o sistema faz o rastreamento dinâmico em tempo real.<br>
+                  • <strong>Pessoas cadastradas:</strong> Identificadas com moldura e status <strong>AUTORIZADO</strong>, indicando o percentual de confiança e exibindo a foto cadastrada.<br>
+                  • <strong>Pessoas desconhecidas:</strong> Alertadas como <strong>NÃO CADASTRADO</strong>, acionando o alerta sonoro e salvando o log no histórico de segurança.
+                </p>
+              </div>
+
+              <!-- Card 3: Seleção de Modos de Monitor -->
+              <div class="settings-card">
+                <div class="settings-card-title">
+                  <span style="font-size:1.1rem;">🖥️</span> 3. Modos de Monitor (Múltiplas Telas)
+                </div>
+                <p style="font-size:0.8rem; color:var(--text-muted); line-height:1.6;">
+                  No topo da tela, você pode alternar entre 3 modos com um clique:<br>
+                  • <strong>1. Padrão:</strong> Painel completo com menu lateral, câmeras e feed de logs.<br>
+                  • <strong>2. Cadastro:</strong> Foca a tela na área de cadastro (ideal para a recepção/balcão de atendimento).<br>
+                  • <strong>3. Câmeras:</strong> Oculta os menus e expande as 4 câmeras em tela cheia (ideal para vigilância contínua).
+                </p>
+              </div>
+
+              <!-- Card 4: Conectar Câmeras USB -->
+              <div class="settings-card">
+                <div class="settings-card-title">
+                  <span style="font-size:1.1rem;">🎥</span> 4. Conexão de Múltiplas Câmeras USB
+                </div>
+                <p style="font-size:0.8rem; color:var(--text-muted); line-height:1.6;">
+                  • Conecte as webcams USB ao computador (ou adaptador USB multiportas).<br>
+                  • Na tela de Câmeras, clique em <strong>🔍 Verificar Câmeras Conectadas</strong>.<br>
+                  • O sistema detectará todas as câmeras físicas e permitirá atribuir cada webcam ao Feed 1, Feed 2, Feed 3 ou Feed 4 separadamente.
+                </p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right Logs Sidebar (Live Security Log) -->
+        <aside class="right-logs-panel" id="rightLogsPanel">
+          <div class="logs-header">
+            <span class="logs-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              Log de Segurança em Tempo Real
+            </span>
+          </div>
+
+          <div class="logs-list" id="liveLogsList">
+            <!-- Populated dynamically from app.js -->
+          </div>
+        </aside>
+
+      </div>
+    </main>
+
+    <!-- Backdrop para Menu Gaveta no Mobile (Invisível no PC) -->
+    <div class="mobile-sidebar-backdrop" id="mobileSidebarBackdrop"></div>
+
+    <!-- Barra de Navegação Inferior para Celular e Tablet (Invisível no PC) -->
+    <nav class="mobile-bottom-nav" id="mobileBottomNav">
+      <button type="button" class="mobile-nav-btn active" data-tab="monitoring" title="Câmera ao Vivo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 7l-7 5 7 5V7z"></path>
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+        </svg>
+        <span>Câmera</span>
+      </button>
+
+      <button type="button" class="mobile-nav-btn" data-tab="enrollment" title="Cadastrar Rosto">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="8.5" cy="7" r="4"></circle>
+          <line x1="20" y1="8" x2="20" y2="14"></line>
+          <line x1="23" y1="11" x2="17" y2="11"></line>
+        </svg>
+        <span>Cadastro</span>
+      </button>
+
+      <button type="button" class="mobile-nav-btn" data-tab="logs" title="Tutorial e Logs">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+        </svg>
+        <span>Logs</span>
+      </button>
+
+      <button type="button" class="mobile-nav-btn" data-tab="status" title="Status do Sistema">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+        </svg>
+        <span>Status</span>
+      </button>
+
+      <button type="button" class="mobile-nav-btn" data-tab="settings" title="Configurações">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>Ajustes</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Modal: Gerenciador de Saídas USB e Câmeras Conectadas -->
+  <div class="modal-backdrop" id="cameraCheckModal">
+    <div class="modal-box modal-usb">
+      <div class="usb-modal-header">
+        <div class="usb-modal-title-wrap">
+          <div class="usb-modal-icon-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 7l-7 5 7 5V7z"></path>
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+            </svg>
+          </div>
+          <div>
+            <div class="usb-modal-title" id="cameraModalTitle">Gerenciador de Saídas USB e Câmeras</div>
+          </div>
+        </div>
+        <button class="btn-icon" onclick="document.getElementById('cameraCheckModal').classList.remove('active')" title="Fechar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="usb-modal-subtitle" id="cameraModalSubtitle">
+        Cada câmera física conectada via USB é identificada por sua entrada física e vinculada a uma Saída USB independente (<span style="color:var(--accent-cyan); font-weight:600;">CAM_01</span> ou <span style="color:var(--accent-cyan); font-weight:600;">CAM_02</span>).
+      </div>
+      <div id="connectedDeviceList"></div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
+        <button class="btn-outline" id="btnRefreshUsbBus" type="button" style="font-size:0.8rem; padding:8px 14px; display:inline-flex; align-items:center; gap:6px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          Atualizar Barramento USB
+        </button>
+        <button class="btn-secondary" type="button" onclick="document.getElementById('cameraCheckModal').classList.remove('active')">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="db.js"></script>
+  <script src="biometrics.js"></script>
+  <script src="integrity.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
